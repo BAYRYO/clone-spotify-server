@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv-safe').config({ example: '.env.example' });
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
@@ -14,11 +14,17 @@ const {
     FRONTEND_URI
 } = process.env;
 
+app.use(cors({
+    origin: FRONTEND_URI,
+    credentials: true,
+}));
+
 // Étape 1 - Redirection vers Spotify
 app.get('/login', (req, res) => {
     const scope = [
         'user-read-private',
         'user-read-email',
+        'user-top-read',
         'user-library-read',
         'user-library-modify',
         'streaming',
@@ -68,6 +74,31 @@ app.get('/callback', async (req, res) => {
         res.sendStatus(500);
     }
 });
+
+// Étape 3 - Refresh token
+app.get('/refresh', async (req, res) => {
+    const refresh_token = req.query.refresh_token;
+    try {
+        const response = await axios.post(
+            'https://accounts.spotify.com/api/token',
+            querystring.stringify({
+                grant_type: 'refresh_token',
+                refresh_token: refresh_token
+            }),
+            {
+                headers: {
+                    Authorization: 'Basic ' + Buffer.from(SPOTIFY_CLIENT_ID + ':' + SPOTIFY_CLIENT_SECRET).toString('base64'),
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+            }
+        );
+        res.json(response.data);
+    } catch (error) {
+        console.error('Refresh token error:', error?.response?.data || error.message);
+        res.sendStatus(500);
+    }
+});
+
 
 app.listen(3001, () => {
     console.log('✅ Backend Spotify OAuth ready at http://localhost:3001');
