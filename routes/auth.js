@@ -8,7 +8,7 @@ const {
     SPOTIFY_CLIENT_ID,
     SPOTIFY_CLIENT_SECRET,
     SPOTIFY_REDIRECT_URI,
-    FRONTEND_URI
+    FRONTEND_URI,
 } = process.env;
 
 const requestSpotifyToken = async (data) => {
@@ -17,14 +17,16 @@ const requestSpotifyToken = async (data) => {
         querystring.stringify(data),
         {
             headers: {
-                Authorization: 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64'),
+                Authorization:
+                    'Basic ' +
+                    Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64'),
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
         }
     );
 };
 
-// Étape 1 - Redirection vers Spotify
+// Étape 1 : Redirection vers Spotify
 router.get('/login', (req, res) => {
     const scope = [
         'user-read-private',
@@ -47,7 +49,7 @@ router.get('/login', (req, res) => {
     res.redirect(`https://accounts.spotify.com/authorize?${query}`);
 });
 
-// Étape 2 - Callback avec "code"
+// Étape 2 : Callback depuis Spotify
 router.get('/callback', async (req, res) => {
     const code = req.query.code || null;
 
@@ -60,15 +62,29 @@ router.get('/callback', async (req, res) => {
 
         const { access_token, refresh_token } = response.data;
 
-        // ⚠️ À améliorer en production : ne pas utiliser la query string pour transmettre les tokens
-        res.redirect(`${FRONTEND_URI}/auth/callback?access_token=${access_token}&refresh_token=${refresh_token}`);
+        res.send(`
+        <html>
+        <body>
+            <script>
+            console.log('🟢 Envoi postMessage au parent');
+            window.opener?.postMessage({
+                type: 'spotify_tokens',
+                accessToken: ${JSON.stringify(access_token)},
+                refreshToken: ${JSON.stringify(refresh_token)}
+            }, '${FRONTEND_URI}');
+            window.close();
+            </script>
+        </body>
+        </html>
+        `);
+
     } catch (error) {
         console.error('Callback error:', error?.response?.data || error.message);
-        res.sendStatus(500);
+        res.status(500).send('Erreur lors de l\'authentification avec Spotify');
     }
 });
 
-// Étape 3 - Refresh token
+// Étape 3 : Refresh token
 router.get('/refresh', async (req, res) => {
     const refresh_token = req.query.refresh_token;
 
