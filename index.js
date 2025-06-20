@@ -4,7 +4,7 @@ const cookieParser = require('cookie-parser');
 const authRoutes = require('./routes/auth');
 const meRoutes = require('./routes/me');
 const logoutRoute = require('./routes/logout');
-
+const spotifyRoutes = require('./routes/spotify');
 require('dotenv').config();
 
 const app = express();
@@ -23,10 +23,13 @@ app.use((req, res, next) => {
     next();
 });
 
+app.use(express.json());
+
 app.get('/health', (_, res) => res.send('OK'));
 app.use('/', authRoutes);
 app.use('/', meRoutes);
 app.use('/', logoutRoute);
+app.use('/api', spotifyRoutes);
 
 app.listen(3001, () => {
     console.log('✅ Backend Spotify OAuth ready at http://localhost:3001');

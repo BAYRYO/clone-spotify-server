@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const querystring = require('querystring');
 const crypto = require('crypto');
+require('dotenv').config();
 
 const router = express.Router();
 
