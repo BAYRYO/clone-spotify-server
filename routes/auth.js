@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const querystring = require('querystring');
+const crypto = require('crypto');
 
 const router = express.Router();
 
@@ -17,17 +18,23 @@ const requestSpotifyToken = async (data) => {
         querystring.stringify(data),
         {
             headers: {
-                Authorization:
-                    'Basic ' +
-                    Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64'),
+                Authorization: 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64'),
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
         }
     );
 };
 
-// Étape 1 : Redirection vers Spotify
+// 🔐 Étape 1 - Redirection avec `state` anti-CSRF
 router.get('/login', (req, res) => {
+    const state = crypto.randomUUID();
+    res.cookie('spotify_auth_state', state, {
+        httpOnly: true,
+        secure: false, // true en production (HTTPS)
+        sameSite: 'Lax',
+        maxAge: 300000,
+    });
+
     const scope = [
         'user-read-private',
         'user-read-email',
@@ -44,14 +51,20 @@ router.get('/login', (req, res) => {
         response_type: 'code',
         redirect_uri: SPOTIFY_REDIRECT_URI,
         scope,
+        state,
     });
 
     res.redirect(`https://accounts.spotify.com/authorize?${query}`);
 });
 
-// Étape 2 : Callback depuis Spotify
+// ✅ Étape 2 - Callback + validation state + setCookie
 router.get('/callback', async (req, res) => {
-    const code = req.query.code || null;
+    const { code, state } = req.query;
+    const storedState = req.cookies.spotify_auth_state;
+
+    if (!state || state !== storedState) {
+        return res.status(403).send('State mismatch. Auth aborted.');
+    }
 
     try {
         const response = await requestSpotifyToken({
@@ -60,33 +73,51 @@ router.get('/callback', async (req, res) => {
             grant_type: 'authorization_code',
         });
 
-        const { access_token, refresh_token } = response.data;
+        const { access_token, refresh_token, expires_in } = response.data;
+
+        res.clearCookie('spotify_auth_state');
+
+        // Stocker en cookie sécurisé
+        res.cookie('access_token', access_token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // mettre à true en HTTPS prod
+            sameSite: 'Lax',
+            maxAge: 3600 * 1000,
+        });
+
+        res.cookie('refresh_token', refresh_token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'Lax',
+            maxAge: 30 * 24 * 60 * 60 * 1000,
+        });
 
         res.send(`
         <html>
         <body>
             <script>
-            console.log('🟢 Envoi postMessage au parent');
             window.opener?.postMessage({
                 type: 'spotify_tokens',
-                accessToken: ${JSON.stringify(access_token)},
-                refreshToken: ${JSON.stringify(refresh_token)}
+                accessToken: ${JSON.stringify(access_token)}
             }, '${FRONTEND_URI}');
             window.close();
             </script>
         </body>
         </html>
         `);
-
     } catch (error) {
         console.error('Callback error:', error?.response?.data || error.message);
         res.status(500).send('Erreur lors de l\'authentification avec Spotify');
     }
 });
 
-// Étape 3 : Refresh token
+// ♻️ Étape 3 - Refresh
 router.get('/refresh', async (req, res) => {
-    const refresh_token = req.query.refresh_token;
+    const refresh_token = req.cookies?.refresh_token;
+
+    if (!refresh_token) {
+        return res.status(401).json({ error: 'Aucun refresh token fourni' });
+    }
 
     try {
         const response = await requestSpotifyToken({
@@ -94,11 +125,13 @@ router.get('/refresh', async (req, res) => {
             refresh_token,
         });
 
-        res.json(response.data);
+        const { access_token } = response.data;
+        res.json({ access_token });
     } catch (error) {
         console.error('Refresh token error:', error?.response?.data || error.message);
         res.sendStatus(500);
     }
 });
+
 
 module.exports = router;
