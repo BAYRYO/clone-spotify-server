@@ -59,4 +59,26 @@ router.get('/me/top/tracks', async (req, res) => {
     }
 });
 
+router.get('/me/player', async (req, res) => {
+    const accessToken = req.cookies.access_token;
+
+    if (!accessToken) {
+        return res.status(401).json({ error: 'Non authentifié' });
+    }
+
+    try {
+        const { data } = await axios.get('https://api.spotify.com/v1/me/player', {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
+
+        res.json(data);
+    } catch (err) {
+        const status = err?.response?.status || 500;
+        console.error('[GET /me/player] Spotify API error:', err?.response?.data || err.message);
+        res.status(status).json({ error: 'Erreur lors de la récupération du player' });
+    }
+});
+
 module.exports = router;

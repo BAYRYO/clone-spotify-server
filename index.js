@@ -31,6 +31,6 @@ app.use('/', meRoutes);
 app.use('/', logoutRoute);
 app.use('/api', spotifyRoutes);
 
-app.listen(3001, () => {
-    console.log('✅ Backend Spotify OAuth ready at http://localhost:3001');
+app.listen(3001, '127.0.0.1', () => {
+    console.log('✅ Backend Spotify OAuth ready at http://127.0.0.1:3001');
 });

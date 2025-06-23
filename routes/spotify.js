@@ -42,28 +42,6 @@ router.get('/search', async (req, res) => {
     }
 });
 
-router.get('/me/player', async (req, res) => {
-    const accessToken = req.cookies.access_token;
-
-    if (!accessToken) {
-        return res.status(401).json({ error: 'Non authentifié' });
-    }
-
-    try {
-        const { data } = await axios.get('https://api.spotify.com/v1/me/player', {
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-            },
-        });
-
-        res.json(data);
-    } catch (err) {
-        const status = err?.response?.status || 500;
-        console.error('[GET /me/player] Spotify API error:', err?.response?.data || err.message);
-        res.status(status).json({ error: 'Erreur lors de la récupération du player' });
-    }
-});
-
 router.post('/play', async (req, res) => {
     const accessToken = req.cookies.access_token;
     const { uri } = req.body;
@@ -123,5 +101,30 @@ router.get('/me/tracks', async (req, res) => {
     }
 });
 
+router.put('/transfer', async (req, res) => {
+    const accessToken = req.cookies.access_token;
+    const { device_id } = req.body;
+
+    if (!accessToken || !device_id) {
+        return res.status(400).json({ error: 'Token ou device_id manquant' });
+    }
+
+    try {
+        await axios.put(
+            'https://api.spotify.com/v1/me/player',
+            { device_ids: [device_id], play: false },
+            {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+            }
+        );
+        res.sendStatus(204);
+    } catch (err) {
+        console.error('[PUT /transfer]', err?.response?.data || err.message);
+        res.status(500).json({ error: 'Impossible de transférer la lecture' });
+    }
+});
 
 module.exports = router;
